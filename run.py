@@ -1,5 +1,4 @@
 from config import cfg
-import torch
 import argparse
 
 parser = argparse.ArgumentParser()
@@ -21,4 +20,5 @@ def run_fuse():
 
 
 if __name__ == '__main__':
-    globals()['run_' + args.type]()
+    # globals()['run_' + args.type]()
+    run_rendering()

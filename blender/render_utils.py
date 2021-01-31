@@ -27,14 +27,14 @@ class DataStatistics(object):
         self.dir_path = os.path.join(cfg.LINEMOD_ORIG,'{}/data'.format(class_type))
 
         dataset_pose_dir_path = os.path.join(cfg.DATA_DIR, 'dataset_poses')
-        os.system('mkdir -p {}'.format(dataset_pose_dir_path))
+        os.system('mkdir -p {}'.format(dataset_pose_dir_path))  # 创建 data/dataset_poses文件夹
         self.dataset_poses_path = os.path.join(dataset_pose_dir_path, '{}_poses.npy'.format(class_type))
         blender_pose_dir_path = os.path.join(cfg.DATA_DIR, 'blender_poses')
-        os.system('mkdir -p {}'.format(blender_pose_dir_path))
+        os.system('mkdir -p {}'.format(blender_pose_dir_path))  # 创建 data/blender_poses文件夹
         self.blender_poses_path = os.path.join(blender_pose_dir_path, '{}_poses.npy'.format(class_type))
-        os.system('mkdir -p {}'.format(blender_pose_dir_path))
+        os.system('mkdir -p {}'.format(blender_pose_dir_path))  # 是否多余
 
-        self.pose_transformer = PoseTransformer(class_type)
+        self.pose_transformer = PoseTransformer(class_type)  #
 
     def get_proper_crop_size(self):
         mask_paths = glob.glob(self.mask_path)
@@ -72,23 +72,23 @@ class DataStatistics(object):
 
         eulers = []
         translations = []
-        train_set = np.loadtxt(os.path.join(cfg.LINEMOD, '{}/training_range.txt'.format(self.class_type)),np.int32)
+        train_set = np.loadtxt(os.path.join(cfg.LINEMOD, '{}/training_range.txt'.format(self.class_type)),np.int32)  # 将训练用的图片序号加载为np数据类型
         for idx in train_set:
             rot_path = os.path.join(self.dir_path, 'rot{}.rot'.format(idx))
             tra_path = os.path.join(self.dir_path, 'tra{}.tra'.format(idx))
-            pose = read_pose(rot_path, tra_path)
-            euler = self.pose_transformer.orig_pose_to_blender_euler(pose)
+            pose = read_pose(rot_path, tra_path)  # 读取LINEMOD_ORIG数据集的Rt数据,np,[3,4]
+            euler = self.pose_transformer.orig_pose_to_blender_euler(pose)  # 根据LINEMOD_ORIG数据集真实位姿，获得Blender模型以欧拉角表示的位姿
             eulers.append(euler)
             translations.append(pose[:, 3])
 
         eulers = np.array(eulers)
-        translations = np.array(translations)
-        np.save(self.dataset_poses_path, np.concatenate([eulers, translations], axis=-1))
+        translations = np.array(translations)  # 单独存储真实的平移参数
+        np.save(self.dataset_poses_path, np.concatenate([eulers, translations], axis=-1))  # 获取到了LINEMOD数据集的真实位姿
 
         return eulers, translations
 
     def sample_sphere(self, num_samples):
-        """ sample angles from the sphere
+        """ sample angles from the sphere 从球面均匀采样
         reference: https://zhuanlan.zhihu.com/p/25988652?group_id=828963677192491008
         """
         flat_objects = ['037_scissors', '051_large_clamp', '052_extra_large_clamp']
@@ -96,28 +96,53 @@ class DataStatistics(object):
             begin_elevation = 30
         else:
             begin_elevation = 0
-        ratio = (begin_elevation + 90) / 180
+        ratio = (begin_elevation + 90) / 180  # 计算可视点俯仰角范围
+        # 计算需要在整个球面生成点的个数
         num_points = int(num_samples // (1 - ratio))
-        phi = (np.sqrt(5) - 1.0) / 2.
-        azimuths = []
-        elevations = []
+        phi = (np.sqrt(5) - 1.0) / 2.  # 黄金分割比
+        azimuths = []  # 方位角
+        elevations = []  # 俯仰角
+        # 只计算在可视点范围内的采样点坐标
         for n in range(num_points - num_samples, num_points):
             z = 2. * n / num_points - 1.
             azimuths.append(np.rad2deg(2 * np.pi * n * phi % (2 * np.pi)))
             elevations.append(np.rad2deg(np.arcsin(z)))
-        return np.array(azimuths), np.array(elevations)
+        return np.array(azimuths), np.array(elevations)  # 获得采样点的俯仰角和方位角
+
+    # def sample_sphere(self, num_samples):
+    #     """ sample angles from the sphere 从球面均匀采样
+    #     reference: https://zhuanlan.zhihu.com/p/25988652?group_id=828963677192491008
+    #     """
+    #     flat_objects = ['037_scissors', '051_large_clamp', '052_extra_large_clamp']
+    #     if self.class_type in flat_objects:
+    #         begin_elevation = 0
+    #     else:
+    #         begin_elevation = 0
+    #     ratio = (begin_elevation + 0) / 180  # 计算可视点俯仰角范围
+    #     # 计算需要在整个球面生成点的个数
+    #     num_points = int(num_samples // (1 - ratio))
+    #     phi = (np.sqrt(5) - 1.0) / 2.  # 黄金分割比
+    #     azimuths = []  # 方位角
+    #     elevations = []  # 俯仰角
+    #     # 只计算在可视点范围内的采样点坐标
+    #     for n in range(num_points - num_samples, num_points):
+    #         z = 2. * n / num_points - 1.
+    #         azimuths.append(np.rad2deg(2 * np.pi * n * phi % (2 * np.pi)))
+    #         elevations.append(np.rad2deg(np.arcsin(z)))
+    #     return np.array(azimuths), np.array(elevations)  # 获得采样点的俯仰角和方位角
 
     def sample_poses(self):
+        # 获得了LINEMOD数据集对象的真实位姿，np，[m,6],m为图片数量,同时位姿已经被保存
         eulers, translations = self.get_dataset_poses()
-        num_samples = cfg.NUM_SYN
-        azimuths, elevations = self.sample_sphere(num_samples)
-        euler_sampler = stats.gaussian_kde(eulers.T)
-        eulers = euler_sampler.resample(num_samples).T
-        eulers[:, 0] = azimuths
+        num_samples = cfg.NUM_SYN  # 合成图片数量
+        azimuths, elevations = self.sample_sphere(num_samples)  # 获得采样点的俯仰角和方位角
+        euler_sampler = stats.gaussian_kde(eulers.T)  # 用高斯核进行核密度估计
+        eulers = euler_sampler.resample(num_samples).T  # 利用核密度估计重新采样
+        eulers[:, 0] = azimuths  # 用重采样点的姿态作为待渲染图片的姿态
         eulers[:, 1] = elevations
-        translation_sampler = stats.gaussian_kde(translations.T)
+        translation_sampler = stats.gaussian_kde(translations.T)  #
         translations = translation_sampler.resample(num_samples).T
-        np.save(self.blender_poses_path, np.concatenate([eulers, translations], axis=-1))
+        np.save(self.blender_poses_path, np.concatenate([eulers, translations], axis=-1))  # 将采样得到的方位角俯仰角保存，np
 
 
 class YCBDataStatistics(DataStatistics):
@@ -166,14 +191,15 @@ class Renderer(object):
         # 'blender': np.array([[280.0, 0.0, 128.0],
         #                      [0.0, 280.0, 128.0],
         #                      [0.0, 0.0, 1.0]]),
+        #  中心点位置按照480*640设置，焦距为试验获得
         'blender': np.array([[700.,    0.,  320.],
                              [0.,  700.,  240.],
                              [0.,    0.,    1.]])
     }
 
     def __init__(self, class_type):
-        self.class_type = class_type
-        self.bg_imgs_path = os.path.join(cfg.DATA_DIR, 'bg_imgs.npy')
+        self.class_type = class_type  # cat
+        self.bg_imgs_path = os.path.join(cfg.DATA_DIR, 'bg_imgs.npy')  #
         self.poses_path = os.path.join(cfg.DATA_DIR, 'blender_poses', '{}_poses.npy').format(class_type)
         self.output_dir_path = os.path.join(cfg.LINEMOD,'renders/{}').format(class_type)
         self.blender_path = cfg.BLENDER_PATH
@@ -186,16 +212,16 @@ class Renderer(object):
         if os.path.exists(self.bg_imgs_path):
             return
 
-        img_paths = glob.glob(os.path.join(cfg.SUN, 'JPEGImages/*'))
+        img_paths = glob.glob(os.path.join(cfg.SUN, 'JPEGImages/*'))  #返回图片文件路径列表
         bg_imgs = []
 
         for img_path in img_paths:
             img = Image.open(img_path)
             row, col = img.size
-            if row > 500 and col > 500:
+            if row > 500 and col > 500:  #选择图像长宽均大于500的图像
                 bg_imgs.append(img_path)
 
-        np.save(self.bg_imgs_path, bg_imgs)
+        np.save(self.bg_imgs_path, bg_imgs)  # 最终选择出了4977张图片，将其路径保存为np数据
 
     def project_model(self, model_3d, pose, camera_type):
         camera_model_2d = np.dot(model_3d, pose[:, :3].T) + pose[:, 3]
@@ -222,7 +248,7 @@ class Renderer(object):
 
     def sample_poses(self):
         statistician = DataStatistics(self.class_type)
-        statistician.sample_poses()
+        statistician.sample_poses()  # 获取到了待渲染图像的对象的方位角和俯仰角，并且保存在文件blender_poses中，np
 
     def get_plane_height(self):
         if os.path.exists(self.plane_height_path):
@@ -246,12 +272,13 @@ class Renderer(object):
         2. sample poses from the pose distribution of training data
         3. call the blender to render images
         """
-        self.get_bg_imgs()
-        self.sample_poses()
+        self.get_bg_imgs()  # 将从SUN数据集中选择出来的图片作为背景，以np形式保存图片路径；保存在 data/bg_images.npy中
+        self.sample_poses()  # 获取到了代渲染图像的对象的方位角和俯仰角，并且保存在文件blender_poses中，np
 
         if not os.path.exists(self.output_dir_path):
             os.makedirs(self.output_dir_path)
-
+        # 执行如下命令，
+        # 执行render_backend.py文件，并且附加相关参数
         os.system('{} {} --background --python {} -- --input {} --output_dir {} --bg_imgs {} --poses_path {}'.
                   format(self.blender_path, self.blank_blend, self.py_path, self.obj_path,
                          self.output_dir_path, self.bg_imgs_path, self.poses_path))
@@ -305,7 +332,7 @@ class MultiRenderer(Renderer):
     def __init__(self):
         super(MultiRenderer, self).__init__('')
         self.poses_path = os.path.join(cfg.DATA_DIR, '{}_poses.npy')
-        self.output_dir_path = '/home/pengsida/Datasets/LINEMOD/renders/all_objects'
+        self.output_dir_path = '/home/shenshougang/PythonProjects/pvnet-rendering/data/LINEMOD/renders/all_objects'
 
     def sample_poses(self):
         for class_type in self.class_types:

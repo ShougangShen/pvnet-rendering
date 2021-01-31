@@ -26,25 +26,25 @@ def save_pickle(data, pkl_path):
 
 def read_pose(rot_path, tra_path):
     rot = np.loadtxt(rot_path, skiprows=1)
-    tra = np.loadtxt(tra_path, skiprows=1) / 100.
+    tra = np.loadtxt(tra_path, skiprows=1) / 100.  # 将量纲转换为“m”
     return np.concatenate([rot, np.reshape(tra, newshape=[3, 1])], axis=-1)
 
 
 class ModelAligner(object):
     rotation_transform = np.array([[1., 0., 0.],
                                    [0., -1., 0.],
-                                   [0., 0., -1.]])
+                                   [0., 0., -1.]])  # 定义某个旋转变换,绕x旋转180度
     translation_transforms = {
         # 'cat': np.array([-0.00577495, -0.01259045, -0.04062323])
     }
     intrinsic_matrix = {
-        'linemod': np.array([[572.4114, 0., 325.2611],
+        'linemod': np.array([[572.4114, 0., 325.2611],  # linemod数据集的相机内参
                               [0., 573.57043, 242.04899],
                               [0., 0., 1.]]),
         # 'blender': np.array([[280.0, 0.0, 128.0],
         #                      [0.0, 280.0, 128.0],
         #                      [0.0, 0.0, 1.0]]),
-        'blender': np.array([[700.,    0.,  320.],
+        'blender': np.array([[700.,    0.,  320.],  # Blender相机内参
                              [0.,  700.,  240.],
                              [0.,    0.,    1.]])
     }
@@ -56,7 +56,7 @@ class ModelAligner(object):
         self.orig_old_model_path = os.path.join(cfg.LINEMOD_ORIG,'{}/OLDmesh.ply'.format(class_type))
         self.transform_dat_path = os.path.join(cfg.LINEMOD_ORIG,'{}/transform.dat'.format(class_type))
 
-        self.R_p2w,self.t_p2w,self.s_p2w=self.setup_p2w_transform()
+        self.R_p2w, self.t_p2w, self.s_p2w = self.setup_p2w_transform()
 
     @staticmethod
     def setup_p2w_transform():
@@ -76,7 +76,7 @@ class ModelAligner(object):
         t_p2w = np.dot(R2, t1) + t2
         R_p2w = np.dot(R2, R1)
         s_p2w = 0.85
-        return R_p2w,t_p2w,s_p2w
+        return R_p2w, t_p2w, s_p2w
 
     def pose_p2w(self,RT):
         t,R=RT[:,3],RT[:,:3]
@@ -101,7 +101,7 @@ class ModelAligner(object):
     def load_orig_model(self):
         if os.path.exists(self.orig_model_path):
             return self.load_ply_model(self.orig_model_path) / 1000.
-        else:
+        else:  # 将LINEMOD_ORIG数据集中的OLDmesh文件由teansform转换为新的模型作为origin_model
             transform = self.read_transform_dat()
             old_model = self.load_ply_model(self.orig_old_model_path) / 1000.
             old_model = np.dot(old_model, transform[:, :3].T) + transform[:, 3]
@@ -111,10 +111,10 @@ class ModelAligner(object):
         if self.class_type in self.translation_transforms:
             return self.translation_transforms[self.class_type]
 
-        blender_model = self.load_ply_model(self.blender_model_path)
-        orig_model = self.load_orig_model()
-        blender_model = np.dot(blender_model, self.rotation_transform.T)
-        translation_transform = np.mean(orig_model, axis=0) - np.mean(blender_model, axis=0)
+        blender_model = self.load_ply_model(self.blender_model_path)  # 读取LINEMOD数据集的模型文件
+        orig_model = self.load_orig_model()  # 获取LINEMOD_ORIG数据集下的mesh.ply文件， 缩小1000倍
+        blender_model = np.dot(blender_model, self.rotation_transform.T)  # 将blender_model按定义的旋转矩阵绕x旋转180度
+        translation_transform = np.mean(orig_model, axis=0) - np.mean(blender_model, axis=0)  # 计算两个模型中心点之间的距离，即平移参数
         self.translation_transforms[self.class_type] = translation_transform
 
         return translation_transform
@@ -134,9 +134,9 @@ class ModelAligner(object):
 
     def validate(self, idx):
         model = self.load_ply_model(self.blender_model_path)
-        pose = read_pickle('/home/pengsida/Datasets/LINEMOD/renders/{}/{}_RT.pkl'.format(self.class_type, idx))['RT']
+        pose = read_pickle('/home/shenshougang/PythonProjects/pvnet-rendering/data/LINEMOD/renders/{}/{}_RT.pkl'.format(self.class_type, idx))['RT']
         model_2d = self.project_model(model, pose, 'blender')
-        img = np.array(Image.open('/home/pengsida/Datasets/LINEMOD/renders/{}/{}.jpg'.format(self.class_type, idx)))
+        img = np.array(Image.open('/home/shenshougang/PythonProjects/pvnet-rendering/data/LINEMOD/renders/{}/{}.jpg'.format(self.class_type, idx)))
 
         import matplotlib.pyplot as plt
         plt.imshow(img)
@@ -145,7 +145,7 @@ class ModelAligner(object):
 
 
 class PoseTransformer(object):
-    rotation_transform = np.array([[1., 0., 0.],
+    rotation_transform = np.array([[1., 0., 0.],  # 模型绕x轴旋转180°（LINEMOD_ORIG模型和LINEMOD模型的旋转关系）
                                    [0., -1., 0.],
                                    [0., 0., -1.]])
     translation_transforms = {}
@@ -166,16 +166,20 @@ class PoseTransformer(object):
         self.blender_model_path = os.path.join(cfg.LINEMOD,'{}/{}.ply'.format(class_type, class_type))
         self.orig_model_path = os.path.join(cfg.LINEMOD_ORIG,'{}/mesh.ply'.format(class_type))
         self.xyz_pattern = os.path.join(cfg.OCCLUSION_LINEMOD,'models/{}/{}.xyz')
-        self.model_aligner = ModelAligner(class_type)
+        self.model_aligner = ModelAligner(class_type)  # 创建一个ModelAligner实例
 
     def orig_pose_to_blender_pose(self, pose):
-        rot, tra = pose[:, :3], pose[:, 3]
+        rot, tra = pose[:, :3], pose[:, 3]  # LINEMOD_ORIG数据集位姿
+        # t_target = R1 * t_source + t1, 由已知的变换参数，根据数据集原位姿得到Blender模型位姿
+        # model_aligner.get_translation_transform()为获取LIENMOD_ORIG中mesh.ply模型和LINEMOD中的blender_model之间的平移
         tra = tra + np.dot(rot, self.model_aligner.get_translation_transform())
         rot = np.dot(rot, self.rotation_transform)
-        return np.concatenate([rot, np.reshape(tra, newshape=[3, 1])], axis=-1)
+        # 此时的姿态已经是正确的姿态
+        return np.concatenate([rot, np.reshape(tra, newshape=[3, 1])], axis=-1)  # np,[3,4]
 
     @staticmethod
     def blender_pose_to_blender_euler(pose):
+        # 将位姿矩阵转换为欧拉角形式,zxz形式
         euler = [r / np.pi * 180 for r in mat2euler(pose, axes='szxz')]
         euler[0] = -(euler[0] + 90) % 360
         euler[1] = euler[1] - 90
@@ -249,10 +253,10 @@ class Projector(object):
                               [0.0,    0.0, 1.0]])
     }
 
-    def project(self,pts_3d,RT,K_type):
-        pts_2d=np.matmul(pts_3d,RT[:,:3].T)+RT[:,3:].T
-        pts_2d=np.matmul(pts_2d,self.intrinsic_matrix[K_type].T)
-        pts_2d=pts_2d[:,:2]/pts_2d[:,2:]
+    def project(self, pts_3d, RT, K_type):
+        pts_2d=np.matmul(pts_3d, RT[:,:3].T) + RT[:,3:].T
+        pts_2d=np.matmul(pts_2d, self.intrinsic_matrix[K_type].T)
+        pts_2d=pts_2d[:, :2]/pts_2d[:, 2:]
         return pts_2d
 
     def project_h(self,pts_3dh,RT,K_type):

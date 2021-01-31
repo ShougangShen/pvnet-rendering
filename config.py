@@ -19,7 +19,7 @@ cfg.BLENDER_DIR = os.path.join(cfg.ROOT_DIR, "blender")
 def add_path():
     for key, value in cfg.items():
         if 'DIR' in key:
-            sys.path.insert(0, value)
+            sys.path.insert(0, value)  # 样新添加的目录会优先于其他目录被import检查
 
 
 add_path()
@@ -38,8 +38,8 @@ cfg.SUN = os.path.join(cfg.DATA_DIR, "SUN")
 """
 Rendering setting
 """
-cfg.BLENDER_PATH = '/home/pengsida/Software/blender-2.79a-linux-glibc219-x86_64/blender'
-cfg.NUM_SYN = 10
+cfg.BLENDER_PATH = '/home/shenshougang/SoftWare/blender-2.79b-linux-glibc219-x86_64/blender'
+cfg.NUM_SYN = 20
 cfg.WIDTH = 640
 cfg.HEIGHT = 480
 cfg.low_azi = 0

@@ -4,7 +4,8 @@ import math
 import bpy
 import numpy as np
 import sys
-from transforms3d.euler import euler2mat
+# from transforms3d.euler import euler2mat
+import transforms3d
 import itertools
 import glob
 
@@ -225,7 +226,7 @@ def render(camera, outfile, pose):
     bpy.context.scene.render.filepath = outfile
     depth_file_output.file_slots[0].path = bpy.context.scene.render.filepath + '_depth.png'
 
-    azimuth, elevation, theta = pose[:3]
+    azimuth, elevation, theta = pose[:3]  # 获取物体位姿
     cx, cy, cz = obj_centened_camera_pos(cfg.cam_dist, azimuth, elevation)
     q1 = camPosToQuaternion(cx, cy, cz)
     q2 = camRotQuaternion(cx, cy, cz, theta)
@@ -252,7 +253,9 @@ def add_shader_on_world():
     bpy.data.worlds['World'].use_nodes = True
     env_node = bpy.data.worlds['World'].node_tree.nodes.new(type='ShaderNodeTexEnvironment')
     back_node = bpy.data.worlds['World'].node_tree.nodes['Background']
+    world_out = bpy.data.worlds['World'].node_tree.nodes['World Output']
     bpy.data.worlds['World'].node_tree.links.new(env_node.outputs['Color'], back_node.inputs['Color'])
+    bpy.data.worlds['World'].node_tree.links.new(back_node.outputs['Background'], world_out.inputs['Surface'])
 
 
 def add_shader_on_ply_object(obj):
@@ -262,17 +265,17 @@ def add_shader_on_ply_object(obj):
     material.use_nodes = True
     material.node_tree.links.clear()
 
-    mat_out = material.node_tree.nodes['Material Output']
-    diffuse_node = material.node_tree.nodes['Diffuse BSDF']
-    gloss_node = material.node_tree.nodes.new(type='ShaderNodeBsdfGlossy')
-    attr_node = material.node_tree.nodes.new(type='ShaderNodeAttribute')
+    mat_out = material.node_tree.nodes['Material Output']  # 材质输出节点
+    diffuse_node = material.node_tree.nodes['Diffuse BSDF']  # 漫射着色器
+    gloss_node = material.node_tree.nodes.new(type='ShaderNodeBsdfGlossy')  # 光泽着色器
+    attr_node = material.node_tree.nodes.new(type='ShaderNodeAttribute')  # 输入：属性
 
-    material.node_tree.nodes.remove(diffuse_node)
-    attr_node.attribute_name = 'Col'
+    material.node_tree.nodes.remove(diffuse_node)  # 删除漫射节点
+    attr_node.attribute_name = 'Col'  # 属性设置为顶点属性
     material.node_tree.links.new(attr_node.outputs['Color'], gloss_node.inputs['Color'])
     material.node_tree.links.new(gloss_node.outputs['BSDF'], mat_out.inputs['Surface'])
 
-    obj.data.materials.append(material)
+    obj.data.materials.append(material)  # 顶点属性 -> 光泽BSDF -> 材质输出
 
     return material
 
@@ -352,9 +355,9 @@ def batch_render_with_linemod(args, camera):
     for mesh in bpy.data.meshes:
         mesh.use_auto_smooth = True
 
-    add_shader_on_world()
+    add_shader_on_world()  # 添加背景节点，环境纹理
 
-    material = add_shader_on_ply_object(object)
+    material = add_shader_on_ply_object(object)  # 给对象添加材质，将顶点作为材质输出
     # add a plane under the object
     # bpy.ops.mesh.primitive_plane_add()
     # plane = bpy.data.objects['Plane']
@@ -363,19 +366,22 @@ def batch_render_with_linemod(args, camera):
     # add_shader_on_plane(plane)
 
     bg_imgs = np.load(args.bg_imgs).astype(np.str)
-    bg_imgs = np.random.choice(bg_imgs, size=cfg.NUM_SYN)
+    bg_imgs = np.random.choice(bg_imgs, size=cfg.NUM_SYN)  # 随机选择渲染个数个的背景图片
     poses = np.load(args.poses_path)
+    # 判断已经渲染的图像个数，只渲染缺少的个数
     begin_num_imgs = len(glob.glob(os.path.join(args.output_dir, '*.jpg')))
     for i in range(begin_num_imgs, cfg.NUM_SYN):
         # overlay an background image and place the object
         img_name = os.path.basename(bg_imgs[i])
         bpy.data.images.load(bg_imgs[i])
+        # 将背景图片作为环境纹理
         bpy.data.worlds['World'].node_tree.nodes['Environment Texture'].image = bpy.data.images[img_name]
-        pose = poses[i]
+        pose = poses[i]  # 获取一个位姿
         # x, y = np.random.uniform(-0.15, 0.15, size=2)
         x, y = 0, 0
         object.location = [x, y, 0]
-        set_material_node_parameters(material)
+        set_material_node_parameters(material)  # 设置光泽属性，糙度设置为0.8-1.0
+        #
         render(camera, '{}/{}'.format(args.output_dir, i), pose)
         object_to_world_pose = np.array([[1, 0, 0, x],
                                          [0, 1, 0, y],
@@ -437,7 +443,7 @@ def batch_render_ycb(args, camera):
         set_material_node_parameters(material)
         render(camera, '{}/{}'.format(args.output_dir, i), pose)
 
-        rotation = euler2mat(azi, ele, theta)
+        rotation = transforms3d.euler.euler2mat(azi, ele, theta)
         object_to_world_pose = np.concatenate([rotation, [[x], [y], [0]]], axis=-1)
         object_to_world_pose = np.append(object_to_world_pose, [[0, 0, 0, 1]], axis=0)
         KRT = get_K_P_from_blender(camera)
